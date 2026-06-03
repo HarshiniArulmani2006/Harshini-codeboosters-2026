@@ -1,445 +1,339 @@
-
-# Day 8 Student Reference — RAG Systems
-## Retrieval-Augmented Generation
-### Codeboosters Tech | Data Engineering + GenAI Internship | Phase 2
-
----
-
-## Quick Navigation
-
-1. [Key Concepts Cheat Sheet](#key-concepts)
-2. [RAG Pipeline — 7 Steps](#rag-pipeline)
-3. [Code Templates](#code-templates)
-4. [API and Function Reference](#api-reference)
-5. [Common Errors and Fixes](#common-errors)
-6. [Practice Questions](#practice-questions)
-7. [Mini Project Checklist](#mini-project-checklist)
-8. [Day 8 Completion Checklist](#completion-checklist)
+# Day 7 — Embeddings + Semantic Search
+## Student Quick Reference Card
+**Codeboosters Tech | Data Engineering + GenAI Internship | Phase 2 | Day 7 of 10**
 
 ---
 
-## Key Concepts Cheat Sheet
+## What You Learn Today
 
-| Term | Definition |
-|------|-----------|
-| **Hallucination** | When an LLM generates confident-sounding text that is factually wrong or made up |
-| **RAG** | Retrieval-Augmented Generation — grounding LLM answers in retrieved real documents |
-| **Chunk** | A small, focused piece of a document (typically 200–500 words) |
-| **Embedding** | A vector (list of numbers) representing the semantic meaning of text |
-| **Vector Database** | A database that stores and searches embeddings by similarity (e.g. ChromaDB) |
-| **Retrieval** | Finding the most similar document chunks for a given query |
-| **Context Injection** | Adding retrieved chunks to the LLM prompt before the question |
-| **Grounding** | Constraining the LLM to answer only from provided context |
-| **top_k / n_results** | How many similar chunks to retrieve (typically 3–5) |
-| **Indexing Phase** | Done once: chunk → embed → store in ChromaDB |
-| **Querying Phase** | Per question: embed query → retrieve → inject → generate |
-| **Cosine Similarity** | Similarity metric: 1.0 = identical meaning, 0.0 = unrelated |
-| **Knowledge Base** | The collection of documents the RAG system retrieves from |
-| **Temperature (0.1)** | Low randomness setting — LLM sticks closely to provided context |
+| Unit | Topic | Key Outcome |
+|------|-------|-------------|
+| 1 | Why Keyword Search Fails | Understand the vocabulary mismatch problem |
+| 2 | Embeddings: Text as Numbers | Generate 384-dimensional vectors with sentence-transformers |
+| 3 | ChromaDB Vector Database | Store, query, and filter documents by meaning |
+| Mini Project | Smart Notes Search Engine | Build a working semantic search system |
 
 ---
 
-## RAG Pipeline — 7 Steps
+## Core Concept: The Problem and Solution
 
-### Phase A: Indexing (Done Once)
+**Problem — Keyword Search:**
+Searches for the exact word you typed. If you search `"vehicle"` but a document says `"car"` — it is missed.
 
-```
-Step 1: DOCUMENTS     — Your PDFs, CSVs, text files
-         ↓
-Step 2: CHUNK         — Split into small focused pieces (200-500 words each)
-         ↓
-Step 3: EMBED         — Convert each chunk to a 384-dim vector
-                         using all-MiniLM-L6-v2 model
-         ↓
-Step 4: STORE         — Save vectors + text + metadata in ChromaDB
-```
+**Solution — Semantic Search:**
+Converts text to numbers (embeddings) that capture meaning. Similar meanings → similar numbers → found by the system.
 
-### Phase B: Querying (Every User Question)
-
-```
-Step 5: USER QUESTION — "What is ETL?"
-         ↓
-Step 6: EMBED QUERY   — Convert question to vector (SAME model as step 3!)
-         ↓
-Step 7: RETRIEVE      — ChromaDB finds top-3 most similar chunks
-         ↓
-Step 8: INJECT        — Add chunks to LLM prompt as context
-         ↓
-Step 9: GENERATE      — LLM answers using ONLY the provided context
-         ↓
-        ANSWER with source citations
-```
-
-**Critical rule:** Use the SAME embedding model for both documents and queries.
+**One-line summary:**
+> Keyword search matches characters. Semantic search matches meaning.
 
 ---
 
-## Code Templates
+## Key Vocabulary
 
-### Template 1: Complete Setup
+| Term | Simple Definition |
+|------|-------------------|
+| **Embedding** | A piece of text converted into a list of 384 numbers that captures its meaning |
+| **Vector** | A list of numbers. Our embeddings are 384-dimensional vectors. |
+| **Dimension** | One number in the list (384 dimensions = 384 numbers) |
+| **Cosine Similarity** | A score 0.0–1.0 showing how similar two vectors are. Higher = more similar. |
+| **ChromaDB** | A vector database — stores text + embeddings + metadata, finds similar docs fast |
+| **Collection** | A named group of documents in ChromaDB (like a table in SQL) |
+| **Distance** | How far apart two vectors are. **Lower = more similar.** (Opposite of similarity score) |
+| **Metadata** | Extra info stored with each document (subject, topic, author, etc.) for filtering |
+| **In-Memory** | Data stored in RAM only — lost when the notebook restarts |
+
+---
+
+## Install Commands
+
+```python
+# Run this ONCE at the top of your notebook
+!pip install chromadb sentence-transformers -q
+```
+
+---
+
+## Complete Code Templates
+
+### Template 1 — Generate Embeddings
+
+```python
+from sentence_transformers import SentenceTransformer
+
+# Load the model (downloads ~80MB on first run)
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Encode one sentence → shape (384,)
+embedding = model.encode("Your text here")
+print(embedding.shape)        # (384,)
+
+# Encode multiple sentences → shape (N, 384)
+sentences = ["sentence one", "sentence two", "sentence three"]
+embeddings = model.encode(sentences)
+print(embeddings.shape)       # (3, 384)
+```
+
+---
+
+### Template 2 — Cosine Similarity (Manual)
+
+```python
+import numpy as np
+
+def cosine_similarity(vec_a, vec_b):
+    dot_product = np.dot(vec_a, vec_b)
+    norm_a = np.linalg.norm(vec_a)
+    norm_b = np.linalg.norm(vec_b)
+    return dot_product / (norm_a * norm_b)
+
+# Score ranges:
+# 0.90 – 1.00 → Almost identical meaning
+# 0.70 – 0.89 → Very related
+# 0.50 – 0.69 → Somewhat related
+# 0.00 – 0.49 → Unrelated
+```
+
+---
+
+### Template 3 — ChromaDB Full Workflow
+
+```python
+import chromadb
+
+# Step 1: Create client (in-memory — resets on kernel restart)
+client = chromadb.EphemeralClient()
+
+# Step 2: Create or open a collection (like a SQL table)
+collection = client.get_or_create_collection("my_collection")
+
+# Step 3: Add documents
+collection.add(
+    documents=["ETL cleans data", "SQL queries databases", "ML trains models"],
+    ids=["doc001", "doc002", "doc003"],                  # Must be unique strings
+    metadatas=[
+        {"subject": "DE",  "topic": "ETL"},
+        {"subject": "DE",  "topic": "SQL"},
+        {"subject": "ML",  "topic": "Supervised"},
+    ]
+)
+
+# Verify
+print(collection.count())    # Should print 3
+
+# Step 4: Query by meaning
+results = collection.query(
+    query_texts=["How is data prepared?"],   # List — can include multiple queries
+    n_results=2                              # Return top 2 matches
+)
+
+# Step 5: Read results
+docs      = results['documents'][0]     # List of matched texts
+ids       = results['ids'][0]           # List of matched IDs
+distances = results['distances'][0]     # List of distances (LOWER = more similar)
+metadatas = results['metadatas'][0]     # List of metadata dicts
+
+for doc, dist, meta in zip(docs, distances, metadatas):
+    print(f"Distance: {dist:.3f} | Subject: {meta['subject']} | {doc}")
+```
+
+---
+
+### Template 4 — Filter by Metadata
+
+```python
+# Only search within a specific subject
+results = collection.query(
+    query_texts=["your question here"],
+    n_results=3,
+    where={"subject": "ML"}     # Filter: only ML documents
+)
+```
+
+---
+
+### Template 5 — Mini Project Pattern (college_notes.csv)
 
 ```python
 import pandas as pd
 import chromadb
-from sentence_transformers import SentenceTransformer
-from groq import Groq
-import os
 
-# Configuration
-GROQ_API_KEY = "gsk_your_key_here"   # Replace with your key
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-LLM_MODEL = "llama-3.1-8b-instant"
-TOP_K = 3
-TEMPERATURE = 0.1
+# Load dataset
+notes_df = pd.read_csv('college_notes.csv')
 
-# Initialize clients
-groq_client = Groq(api_key=GROQ_API_KEY)
-embed_model = SentenceTransformer(EMBEDDING_MODEL)
-chroma_client = chromadb.Client()
-```
+# Prepare lists for ChromaDB
+all_documents = notes_df['content'].tolist()
+all_ids       = notes_df['note_id'].tolist()
+all_metadata  = [
+    {"subject": row['subject'], "topic": row['topic']}
+    for _, row in notes_df.iterrows()
+]
 
----
+# Create client and collection
+client = chromadb.EphemeralClient()
+notes_collection = client.get_or_create_collection("college_notes")
 
-### Template 2: Index Knowledge Base
-
-```python
-# Load your documents
-df = pd.read_csv("college_notes.csv")
-docs = df["content"].tolist()
-ids  = [f"note_{nid}" for nid in df["note_id"].tolist()]
-meta = [{"subject": r["subject"], "topic": r["topic"]}
-        for r in df.to_dict("records")]
-
-# Create ChromaDB collection
-collection = chroma_client.get_or_create_collection("my_knowledge_base")
-
-# Generate embeddings — ALWAYS .tolist() to convert from numpy
-embeddings = embed_model.encode(docs, show_progress_bar=True).tolist()
-
-# Add to ChromaDB
-collection.add(
-    documents=docs,
-    embeddings=embeddings,
-    ids=ids,
-    metadatas=meta
+# Index all notes
+notes_collection.add(
+    documents=all_documents,
+    ids=all_ids,
+    metadatas=all_metadata
 )
 
-print(f"Indexed {collection.count()} documents.")
-```
+print(f"Indexed: {notes_collection.count()} notes")
 
----
-
-### Template 3: Retrieve Relevant Chunks
-
-```python
-def retrieve(question, top_k=3):
-    # Embed the question with the SAME model
-    q_vec = embed_model.encode(question).tolist()
-    
-    # Search ChromaDB
-    results = collection.query(
-        query_embeddings=[q_vec],
-        n_results=top_k
-    )
-    return results
-
-# With subject filter
-def retrieve_filtered(question, subject, top_k=2):
-    q_vec = embed_model.encode(question).tolist()
-    results = collection.query(
-        query_embeddings=[q_vec],
-        n_results=top_k,
-        where={"subject": subject}    # Metadata filter
-    )
-    return results
-```
-
----
-
-### Template 4: Build Context String
-
-```python
-def build_context(results):
-    parts = []
-    for doc, meta in zip(results["documents"][0],
-                         results["metadatas"][0]):
-        parts.append(f"[{meta['subject']} - {meta['topic']}]\n{doc}")
-    return "\n\n---\n\n".join(parts)
-```
-
----
-
-### Template 5: Generate RAG Answer
-
-```python
-def generate_answer(question, context):
-    system_prompt = """You are a helpful academic assistant.
-Answer ONLY using the information provided in the context below.
-If the answer is not in the context, say:
-'I don't have enough information in my knowledge base to answer this.'
-Do not use your general training knowledge.
-Cite the source in brackets at the end of your answer."""
-
-    response = groq_client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": f"Context:\n{context}\n\nQuestion: {question}"}
-        ],
-        temperature=TEMPERATURE,
-        max_tokens=500
-    )
-    return response.choices[0].message.content
-```
-
----
-
-### Template 6: Complete RAG Pipeline (One Function)
-
-```python
-def ask(question, top_k=3, verbose=True):
-    """Complete RAG pipeline — one function call."""
-    
-    # 1. Retrieve
-    results = retrieve(question, top_k)
-    
-    if verbose:
-        print("Retrieved sources:")
-        for i, (m, d) in enumerate(zip(results["metadatas"][0],
-                                       results["distances"][0])):
-            print(f"  {i+1}. [{m['subject']}] {m['topic']} (dist: {d:.4f})")
-    
-    # 2. Build context
-    context = build_context(results)
-    
-    # 3. Generate
-    answer = generate_answer(question, context)
-    
-    if verbose:
-        print(f"\nANSWER:\n{answer}")
-    
-    return answer
-
-# Usage
-ask("What is ETL and what are its three stages?")
-```
-
----
-
-## API Reference
-
-### ChromaDB
-
-| Operation | Code | Notes |
-|-----------|------|-------|
-| Create client (in-memory) | `chroma = chromadb.Client()` | Data lost on restart |
-| Create client (persistent) | `chroma = chromadb.PersistentClient(path="./db")` | Saves to disk |
-| Get/create collection | `col = chroma.get_or_create_collection("name")` | Safe to call multiple times |
-| Add documents | `col.add(documents, embeddings, ids, metadatas)` | IDs must be unique strings |
-| Query | `col.query(query_embeddings=[vec], n_results=3)` | vec must be a Python list |
-| Count documents | `col.count()` | Returns integer |
-| Delete collection | `chroma.delete_collection("name")` | Use to reset before re-adding |
-| Filter by metadata | `col.query(..., where={"subject": "GenAI"})` | Use `where` parameter |
-
-### SentenceTransformer
-
-| Operation | Code | Notes |
-|-----------|------|-------|
-| Load model | `model = SentenceTransformer("all-MiniLM-L6-v2")` | Downloads ~80MB on first run |
-| Embed text | `vec = model.encode("text").tolist()` | Returns numpy → convert to list |
-| Embed list | `vecs = model.encode(list_of_texts).tolist()` | Returns 2D array |
-| Output shape | `(384,)` for single text | `(n, 384)` for a list |
-
-### Groq API (RAG-specific)
-
-```python
-response = groq_client.chat.completions.create(
-    model="llama-3.1-8b-instant",
-    messages=[
-        {"role": "system", "content": system_prompt},
-        {"role": "user",   "content": user_prompt_with_context}
-    ],
-    temperature=0.1,      # Low = deterministic, follows context
-    max_tokens=500        # Limit response length
+# Search
+results = notes_collection.query(
+    query_texts=["How do I clean messy data?"],
+    n_results=3
 )
-answer = response.choices[0].message.content
+
+# Display
+for doc, dist, meta in zip(
+    results['documents'][0],
+    results['distances'][0],
+    results['metadatas'][0]
+):
+    print(f"[{dist:.3f}] {meta['subject']} — {meta['topic']}")
+    print(f"         {doc[:100]}...")
 ```
 
-### ChromaDB Results Object
+---
+
+## Critical Rules — Memorise These
+
+| Rule | What It Means |
+|------|---------------|
+| **Same model always** | Use the same embedding model for add() AND query(). Never mix models. |
+| **Lower distance = better** | Distance 0.05 is excellent. Distance 0.90 is poor. |
+| **Unique IDs** | Every document must have a unique ID string. Duplicates cause errors. |
+| **In-memory resets** | After kernel restart, re-run your collection.add() cells. |
+
+---
+
+## Distance Score Interpretation
+
+```
+Distance 0.00 – 0.25  →  Excellent match  (very similar meaning)
+Distance 0.25 – 0.50  →  Good match       (related meaning)
+Distance 0.50 – 0.75  →  Weak match       (somewhat related)
+Distance 0.75 – 1.00+ →  Poor match       (unrelated)
+```
+
+**Remember:** `similarity = 1 - distance` if you need the similarity score.
+
+---
+
+## Common Errors Cheat Sheet
+
+| Error Message | Likely Cause | Fix |
+|---------------|--------------|-----|
+| `IDAlreadyExistsError` | Ran `collection.add()` twice with same IDs | Restart kernel, re-run from top |
+| `OSError: Can't load model` | No internet or model name typo | Check internet; name must be `all-MiniLM-L6-v2` |
+| `KeyError: 'documents'` | Accessing results before running query | Run `collection.query()` first |
+| Results look wrong | Different models used for add vs query | Use same model throughout |
+| Collection empty after restart | In-memory client was reset | Re-run `collection.add()` cells |
+
+---
+
+## Results Dictionary Structure
 
 ```python
-results = collection.query(...)
+results = collection.query(query_texts=["question"], n_results=3)
 
-# Access retrieved data:
-results["documents"][0]    # List of text strings  (top-k docs)
-results["distances"][0]    # List of floats         (lower = more similar)
-results["metadatas"][0]    # List of dicts          (subject, topic, etc.)
-results["ids"][0]          # List of strings        (note_1, note_2, etc.)
+# results is a dict with these keys:
+results['documents'][0]     # → list of 3 matched document texts
+results['ids'][0]           # → list of 3 matched IDs
+results['distances'][0]     # → list of 3 distance scores (lower = better)
+results['metadatas'][0]     # → list of 3 metadata dicts
 
-# [0] because we sent one query — results supports batched queries
+# The [0] is because results support batch queries
+# results['documents'][0] = results for FIRST query
+# results['documents'][1] = results for SECOND query (if you sent two)
 ```
 
 ---
 
-## Common Errors and Fixes
+## Today's Dataset — college_notes.csv
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `AuthenticationError` | Wrong/expired API key | Verify key starts with `gsk_`, no spaces |
-| `IDAlreadyExistsError` | `collection.add()` run twice | Run `chroma.delete_collection("name")` or restart runtime |
-| `FileNotFoundError: college_notes.csv` | File not uploaded to Colab | Upload via Files panel (folder icon, left sidebar) |
-| `ValueError: n_results > count` | top_k larger than document count | Use `n_results <= collection.count()` |
-| `TypeError` on embeddings | Forgot `.tolist()` | Add `.tolist()` after `embed_model.encode()` |
-| LLM hallucinates despite RAG | System prompt not strict | Add: "Do not use any information outside the provided context." |
-| Slow first run | Model downloading (~80MB) | Normal — wait 1-2 minutes |
+| Column | Type | Example |
+|--------|------|---------|
+| `note_id` | String | N001, N002 … N015 |
+| `subject` | String | Data Engineering, Machine Learning, Generative AI, Python Programming |
+| `topic` | String | ETL Pipelines, Supervised Learning, Prompt Engineering, Pandas Library |
+| `content` | String | Full text of the note |
 
----
-
-## RAG vs Without RAG
-
-| Feature | Without RAG | With RAG |
-|---------|------------|----------|
-| Knowledge source | LLM training data (fixed cutoff) | Your custom documents |
-| Hallucination risk | High | Low |
-| Private data | No | Yes |
-| Knowledge cutoff | Yes | No (add new docs anytime) |
-| Cites sources | No | Yes |
-| Works offline | Yes | Embedding + ChromaDB yes; LLM call no |
-
----
-
-## When to Use RAG
-
-**Use RAG when:**
-- Answering questions from private company documents
-- Need up-to-date information beyond LLM training cutoff
-- Cannot tolerate hallucination (medical, legal, financial)
-- Need to cite sources for answers
-
-**Do NOT use RAG when:**
-- Simple general knowledge questions
-- Creative writing tasks
-- Basic conversational interactions
-
----
-
-## Real-World Data Engineering RAG Use Cases
-
-1. **Data Catalog Assistants** — "What does the `customer_churn` table contain?"
-2. **Pipeline Debugging** — "Why did ETL job fail with error 504?" (retrieves from incident logs)
-3. **SQL Generation** — "Write a query for revenue by region" (retrieves schema docs)
-4. **Data Governance Q&A** — "What is our PII retention policy?" (retrieves policy docs)
+**15 notes total across 4 subjects.**
+This file is also used in **Day 8 (RAG Systems)** — do not delete it.
 
 ---
 
 ## Practice Questions
 
-### Beginner
-1. What is hallucination in LLMs? Give one real-world example of harm it could cause.
-2. What does RAG stand for? Explain it in 2 sentences.
-3. What is the role of the vector database in the RAG pipeline?
+**Q1.** What is the difference between keyword search and semantic search? Give one real-world example of each.
 
-### Intermediate
-4. What is the difference between the Indexing phase and the Querying phase?
-5. Why must you use the same embedding model for both documents AND queries?
-6. Why is `temperature=0.1` preferred for LLM calls in RAG systems?
+**Q2.** What does `model.encode(['hello world'])` return? What is the shape?
 
-### Coding
-7. Modify the retrieval function to also print distance scores.
-8. Update the system prompt to make the LLM always answer in bullet points.
-9. Add subject-based filtering to retrieve only from the "GenAI" subject.
+**Q3.** A student adds documents using Model A but queries using Model B. Will results be correct? Why?
+
+**Q4.** ChromaDB returns distances `[0.12, 0.45, 0.87]`. Which result is most relevant? Which is least?
+
+**Q5.** Write the `collection.add()` call to store one document with `subject='ML'` and `topic='Regression'`.
+
+**Q6.** Modify a query call to return only `'Python Programming'` notes.
 
 ---
 
-### Answers
+## Architecture Overview
 
-**Q1:** Hallucination = LLM generates confident but wrong text. Harm example: Medical AI states wrong drug dosage; patient harmed.
-
-**Q2:** RAG = Retrieval-Augmented Generation. Before answering, the system retrieves relevant documents and gives them to the LLM as context. The LLM answers only from that context.
-
-**Q3:** The vector database stores document embeddings and retrieves the most semantically similar chunks for a given query using distance calculations.
-
-**Q4:** Indexing is done once to build the knowledge base (chunk, embed, store). Querying happens every time a user asks a question (embed query, retrieve, inject, generate).
-
-**Q5:** Both must live in the same vector space for distance calculations to be meaningful. Different models produce incompatible vector spaces.
-
-**Q6:** Low temperature makes the LLM more deterministic and more likely to follow the context strictly, rather than introducing creative variations from training data.
-
-**Q7:**
-```python
-for i, (doc, dist, meta) in enumerate(zip(
-    results["documents"][0],
-    results["distances"][0],
-    results["metadatas"][0]
-)):
-    print(f"Result {i+1}: {meta['topic']}  —  distance: {dist:.4f}")
 ```
+KEYWORD SEARCH                    SEMANTIC SEARCH (Today)
+──────────────                    ───────────────────────
+User Query                        User Query
+    ↓                                 ↓
+Tokenize Words                    Convert to Embedding (384 numbers)
+    ↓                                 ↓
+Match exact words in index        Compare vectors in ChromaDB
+    ↓                                 ↓
+Rank by word frequency            Rank by distance (lower = better)
+    ↓                                 ↓
+Return Results                    Return Results
 
-**Q8:**
-```python
-system_prompt = """You are a helpful assistant.
-Answer ONLY using the provided context.
-Always format your answer as bullet points.
-If not found, say: 'This topic is not in my knowledge base.'"""
-```
-
-**Q9:**
-```python
-results = collection.query(
-    query_embeddings=[q_vec],
-    n_results=2,
-    where={"subject": "GenAI"}
-)
+FAILS for synonyms/paraphrasing   WORKS for meaning regardless of words
 ```
 
 ---
 
-## Mini Project Checklist
+## What Comes Next — Day 8
 
-College Knowledge Assistant — Complete all steps:
+**RAG (Retrieval Augmented Generation)**
 
-- [ ] Load `college_notes.csv` into a pandas DataFrame
-- [ ] Prepare `documents`, `ids`, and `metadatas` lists
-- [ ] Load the `all-MiniLM-L6-v2` embedding model
-- [ ] Create ChromaDB client and collection
-- [ ] Generate embeddings for all 15 notes using `.encode(...).tolist()`
-- [ ] Add all documents to ChromaDB using `collection.add()`
-- [ ] Verify with `collection.count()` — should return 15
-- [ ] Write a `retrieve(question)` function using `collection.query()`
-- [ ] Write a `build_context(results)` function
-- [ ] Write a `generate_answer(question, context)` function with grounding system prompt
-- [ ] Combine into one `ask(question)` function
-- [ ] Test with an in-scope question — verify correct answer with citation
-- [ ] Test with an out-of-scope question — verify "I don't know" response
-- [ ] Test with a cross-subject question — verify correct subject retrieved
+Day 8 combines everything from Day 7 with the Groq LLM from Day 6:
 
----
+```
+Your Question
+    ↓
+ChromaDB retrieves top 3 relevant notes   ← Day 7 skill
+    ↓
+Groq LLM reads those notes and generates answer  ← Day 6 skill
+    ↓
+Accurate, grounded answer from YOUR data
+```
 
-## Completion Checklist
-
-Mark each item when complete:
-
-- [ ] I can explain hallucination in my own words
-- [ ] I can draw the 7-step RAG pipeline from memory
-- [ ] I ran all notebook cells without errors
-- [ ] I successfully indexed 15 notes into ChromaDB
-- [ ] I tested retrieval and saw relevant topics returned at rank 1
-- [ ] I tested the full pipeline: question → retrieve → inject → answer
-- [ ] I verified out-of-scope questions return "I don't know"
-- [ ] I completed the College Knowledge Assistant mini project
-- [ ] I know at least 2 real-world Data Engineering RAG applications
-- [ ] I can explain why temperature=0.1 is used for RAG
+**Keep your Groq API key ready. Keep `college_notes.csv` saved.**
 
 ---
 
-## Day 9 Preview — AI Agents and Tool Use
+## Day 7 Completion Checklist
 
-Tomorrow you will learn how to build AI systems that **take actions** — not just answer questions.
-
-Topics: What are AI agents, function calling, tool use, multi-step reasoning, building an agent with Groq.
-
-**Homework:** Test your College Knowledge Assistant with 5 of your own questions. Try adding a new row to `college_notes.csv` and re-indexing to verify the system learns new knowledge instantly.
+- [ ] Ran all notebook cells from top to bottom without errors
+- [ ] Observed keyword search missing relevant results (cells 007–008)
+- [ ] Generated embeddings and checked shape is (N, 384) (cells 010–012)
+- [ ] Calculated cosine similarity — similar pair > 0.6, different pair < 0.3 (cell 013)
+- [ ] Created ChromaDB collection and added documents (cells 017–018)
+- [ ] Queried by meaning and interpreted distance scores (cells 019–022)
+- [ ] Completed mini project: indexed 15 notes, ran 5 queries, used where= filter (cells 030–041)
+- [ ] Pushed notebook to GitHub repo `codeboosters-internship-2024`
 
 ---
 
-*Codeboosters Tech — Data Engineering + GenAI Internship | Day 8 of 10*
+*Codeboosters Tech | Data Engineering + GenAI Internship | Day 7 of 10*
